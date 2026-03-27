@@ -1,0 +1,44 @@
+[Unit]
+Description=Pi Power Guard - PMIC power monitoring and crash-resilient watchdog for Raspberry Pi 5
+Documentation=https://github.com/mahsumaktas/pi-power-guard
+After=local-fs.target
+Wants=local-fs.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/python3 /opt/pi-power-guard/pi_power_guard.py --config /etc/pi-power-guard/config.ini
+ExecReload=/bin/kill -HUP $MAINPID
+
+# systemd watchdog: kills and restarts if WATCHDOG=1 not received within 30s
+WatchdogSec=30
+
+# Restart on failure with backoff
+Restart=on-failure
+RestartSec=5
+
+# Directories (systemd creates these automatically)
+RuntimeDirectory=pi-power-guard
+StateDirectory=pi-power-guard
+LogsDirectory=pi-power-guard
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/pi-power-guard /var/lib/pi-power-guard /run/pi-power-guard
+PrivateTmp=true
+
+# Resource limits
+MemoryMax=50M
+CPUQuota=5%
+
+# vcgencmd needs /dev/vcio (video group)
+SupplementaryGroups=video
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pi-power-guard
+
+[Install]
+WantedBy=multi-user.target
