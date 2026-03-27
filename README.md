@@ -27,14 +27,18 @@ This tool was born after investigating a real Pi 5 that shut down mysteriously -
 
 ## Features
 
-- **12 PMIC Rail Monitoring** -- reads every power rail via `vcgencmd pmic_read_adc` (EXT5V, VDD_CORE, 3V3_SYS, 1V8_SYS, DDR, HDMI, and more)
+- **26 PMIC Rail Monitoring** -- reads every power rail voltage and current via `vcgencmd pmic_read_adc`
+- **Total Power Consumption** -- real-time wattage calculated from all V*A rail pairs
 - **Voltage Trend Detection** -- EMA-based slope analysis warns before hardware under-voltage triggers
 - **Crash-Resilient Logging** -- `fdatasync` every 10 seconds with ring buffer rotation (max ~10s data loss vs 5 minutes with journald)
 - **Boot Crash Detection** -- analyzes PM_RSTS register, state files, and ext4 recovery to determine what happened
+- **Previous Session Summary** -- on boot, reports ext5v min/max/avg, warn/alert counts, and power consumption from the previous session
 - **Throttle State Decoding** -- human-readable `get_throttled` bitmask with change tracking
-- **Temperature Monitoring** -- CPU, PMIC, and NVMe temperatures with configurable thresholds
+- **CPU/GPU Frequency Tracking** -- detects frequency changes to correlate with throttle events
+- **Temperature + Fan Monitoring** -- CPU, PMIC, NVMe temps and fan RPM with configurable thresholds
+- **Prometheus Export** -- optional textfile collector `.prom` output for Grafana integration
 - **systemd Integration** -- `Type=notify` with sd_notify watchdog, security hardening
-- **Zero Dependencies** -- Python 3.11+ stdlib only, single file (~700 lines)
+- **Zero Dependencies** -- Python 3.11+ stdlib only, single file (~1100 lines)
 - **One-Shot Diagnostic** -- `--check` flag for instant health report
 
 ## Requirements
@@ -76,33 +80,33 @@ sudo python3 /opt/pi-power-guard/pi_power_guard.py --check
 
 Example output (real Pi 5 data):
 ```
-pi-power-guard v1.0.0 -- One-Shot Check
+pi-power-guard v1.1.0 -- One-Shot Check
 ================================================
 
 Boot Analysis:
   PM_RSTS:           0x1000 (POWER_CYCLE)
   Previous Shutdown: BOOTED
-  Previous Time:     2026-03-27T14:25:49+0300
+  Previous Time:     2026-03-27T16:25:33+0300
   ext4 Recovery:     Yes
 
 Power Rails (PMIC):
   0v8_aon_a           0.003 A
   0v8_aon_v           0.801 V
-  0v8_sw_a            0.364 A
-  0v8_sw_v            0.802 V
-  1v1_sys_a           0.178 A
-  1v1_sys_v           1.106 V
-  1v8_sys_a           0.196 A
-  1v8_sys_v           1.807 V
-  3v3_sys_a           0.126 A
-  3v3_sys_v           3.303 V
-  3v7_wl_sw_a         0.084 A
-  3v7_wl_sw_v         3.710 V
-  ext5v_v             5.136 V [OK]
-  hdmi_a              0.014 A
-  hdmi_v              5.143 V
-  vdd_core_a          1.018 A
-  vdd_core_v          0.796 V
+  0v8_sw_a            0.368 A
+  0v8_sw_v            0.803 V
+  1v1_sys_a           0.177 A
+  1v1_sys_v           1.104 V
+  1v8_sys_a           0.198 A
+  1v8_sys_v           1.797 V
+  3v3_sys_a           0.121 A
+  3v3_sys_v           3.307 V
+  3v7_wl_sw_a         0.082 A
+  3v7_wl_sw_v         3.704 V
+  ext5v_v             5.140 V [OK]
+  hdmi_a              0.015 A
+  hdmi_v              5.146 V
+  vdd_core_a          1.161 A
+  vdd_core_v          0.836 V
   ...
 
 Throttle State:
@@ -110,9 +114,16 @@ Throttle State:
   Flags:  None
 
 Temperatures:
-  CPU        46.9 C  [OK]
-  PMIC       48.6 C  [OK]
-  NVMe       31.9 C  [OK]
+  CPU        47.4 C  [OK]
+  PMIC       47.8 C  [OK]
+  NVMe       30.9 C  [OK]
+
+Total Power:   2.60 W
+Fan Speed:     2730 RPM
+
+Frequencies:
+  CPU        1500 MHz
+  GPU         500 MHz
 
 Voltage Alarm: No
 ```
@@ -134,6 +145,7 @@ Edit `/etc/pi-power-guard/config.ini`. Changes take effect after `sudo systemctl
 | thresholds | `cpu_temp_critical` | `85.0` | CPU temperature critical (C) |
 | trend | `window_size` | `60` | Samples in trend analysis window |
 | trend | `drop_threshold` | `0.15` | Voltage drop (V) that triggers warning |
+| prometheus | `textfile_dir` | _(empty)_ | Path for `.prom` file output (e.g. `/var/lib/node_exporter/textfile_collector`) |
 
 See [config.ini](config.ini) for all options with descriptions.
 
@@ -143,11 +155,13 @@ Each line follows: `TIMESTAMP LEVEL SUBSYSTEM key=value ...`
 
 Real output from a Pi 5 after a power cycle:
 ```
-2026-03-27T14:25:48+0300 BOOT SYSTEM version=1.0.0 hostname=raspberrypi python=3.11.2
-2026-03-27T14:25:49+0300 BOOT CRASH pm_rsts=0x1000 type=POWER_CYCLE prev_state=clean prev_time="2026-03-27T14:25:47+0300" ext4_recovery=true
-2026-03-27T14:25:49+0300 INFO PMIC ext5v_v=5.121 vdd_core_v=0.756 vdd_core_a=0.875 3v3_sys_v=3.322 1v8_sys_v=1.814 ddr_vdd2_v=1.112 hdmi_v=5.142
-2026-03-27T14:25:49+0300 INFO THROTTLE raw=0x0 flags=none
-2026-03-27T14:25:49+0300 INFO TEMP cpu=46.9 pmic=48.7 nvme=32.9
+2026-03-27T16:25:32+0300 BOOT SYSTEM version=1.1.0 hostname=raspberrypi python=3.11.2
+2026-03-27T16:25:33+0300 BOOT CRASH pm_rsts=0x1000 type=POWER_CYCLE prev_state=clean ext4_recovery=true
+2026-03-27T16:25:33+0300 BOOT PREV_SESSION ext5v_min=5.101 ext5v_max=5.166 ext5v_avg=5.138 samples=5431 warns=0 alerts=0
+2026-03-27T16:25:35+0300 INFO PMIC ext5v_v=5.135 ... 3v3_sys_v=3.310 total_w=2.18
+2026-03-27T16:25:35+0300 INFO THROTTLE raw=0x0 flags=none
+2026-03-27T16:25:35+0300 INFO TEMP cpu=46.3 pmic=47.8 nvme=30.9 fan=2736rpm
+2026-03-27T16:25:35+0300 INFO FREQ cpu=1600MHz gpu=500MHz
 ```
 
 What a voltage drop event looks like:
@@ -179,17 +193,28 @@ grep "ext5v_v=" /var/log/pi-power-guard/current.log
 
 # Throttle events only
 grep "THROTTLE" /var/log/pi-power-guard/current.log | grep -v "flags=none"
+
+# Power consumption history
+grep "total_w=" /var/log/pi-power-guard/current.log
+
+# CPU frequency changes (throttle indicator)
+grep "FREQ" /var/log/pi-power-guard/current.log
+
+# Previous session summaries
+grep "PREV_SESSION" /var/log/pi-power-guard/current.log
 ```
 
 ## How It Works
 
 ### Monitoring Loop
 
-Every second, pi-power-guard reads all sensors. It compares with the previous reading and logs when:
+Every second, pi-power-guard reads all sensors (PMIC rails, temperatures, fan speed, CPU/GPU frequency, throttle state). It compares with the previous reading and logs when:
 - Any voltage changes by more than 10mV
 - Any temperature changes by more than 1C
-- Throttle state changes (under-voltage, frequency cap, etc.)
+- Throttle state or CPU frequency changes
 - Or every 5 seconds as a baseline (configurable)
+
+Each log cycle also calculates total power consumption (sum of V*A for all rail pairs).
 
 ### Crash Detection
 
@@ -203,6 +228,8 @@ On every boot, pi-power-guard checks:
 2. **State file** (`/var/lib/pi-power-guard/last-state`) -- written on clean shutdown with timestamp. If the file says "booted" instead of "clean", the previous shutdown was unclean.
 
 3. **ext4 recovery** -- checks `journalctl` for "EXT4-fs recovery" messages, confirming filesystem was dirty.
+
+4. **Previous session summary** -- analyzes the previous log file and reports EXT5V min/max/average, total samples, warning/alert counts, and average power consumption. This gives you a complete picture of the previous session's health at a glance.
 
 ### Voltage Trend Detection
 
@@ -272,7 +299,10 @@ Yes. Set `sync_interval = 30` in config.ini to reduce writes. At 100 bytes per l
 `get_throttled` tells you the *current* state. pi-power-guard gives you the *history* -- what happened in the seconds before a crash, voltage trends over time, and forensic boot analysis.
 
 **Can I use it alongside RPi-Monitor or Prometheus?**
-Yes. pi-power-guard writes to its own log files and doesn't interfere with other monitoring.
+Yes. pi-power-guard writes to its own log files and doesn't interfere with other monitoring. For Prometheus integration, set `textfile_dir` in config.ini to your node_exporter's textfile collector directory and all metrics will be exported automatically.
+
+**How is total power calculated?**
+For each PMIC rail pair (e.g. `EXT5V_V` and `EXT5V_A`), it multiplies voltage by current and sums all pairs. This gives the total power drawn through the PMIC, which covers most of the Pi's consumption (CPU, GPU, memory, I/O). Note: USB peripherals powered externally are not included.
 
 ## Contributing
 

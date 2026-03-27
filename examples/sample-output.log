@@ -1,23 +1,27 @@
-2026-03-27T14:30:15+0300 BOOT SYSTEM version=1.0.0 hostname=raspberrypi python=3.11.2
-2026-03-27T14:30:15+0300 BOOT CRASH pm_rsts=0x1000 type=POWER_CYCLE prev_state=booted prev_time="2026-03-27T07:03:00+0300" ext4_recovery=true
-2026-03-27T14:30:16+0300 INFO PMIC ext5v_v=5.102 ext5v_a=0.474 vdd_core_v=0.796 vdd_core_a=1.018 3v3_sys_v=3.311 3v3_sys_a=0.122 1v8_sys_v=1.809 1v8_sys_a=0.195 ddr_vdd2_v=1.101 ddr_vddq_v=0.601 hdmi_v=5.140 3v7_wl_sw_v=3.715
-2026-03-27T14:30:16+0300 INFO THROTTLE raw=0x0 flags=none
-2026-03-27T14:30:16+0300 INFO TEMP cpu=45.2 pmic=42.0 nvme=38.0
-2026-03-27T14:30:21+0300 INFO PMIC ext5v_v=5.098 ext5v_a=0.481 vdd_core_v=0.796 vdd_core_a=1.024 3v3_sys_v=3.295 3v3_sys_a=0.125 1v8_sys_v=1.802 1v8_sys_a=0.198 ddr_vdd2_v=1.101 ddr_vddq_v=0.601 hdmi_v=5.082 3v7_wl_sw_v=3.710
-2026-03-27T14:30:21+0300 INFO THROTTLE raw=0x0 flags=none
-2026-03-27T14:30:21+0300 INFO TEMP cpu=45.8 pmic=42.5 nvme=38.0
-2026-03-27T14:30:26+0300 INFO PMIC ext5v_v=5.095 ext5v_a=0.478 vdd_core_v=0.796 vdd_core_a=1.020 3v3_sys_v=3.298 3v3_sys_a=0.123 1v8_sys_v=1.805 1v8_sys_a=0.196 ddr_vdd2_v=1.101 ddr_vddq_v=0.601 hdmi_v=5.088 3v7_wl_sw_v=3.712
-2026-03-27T14:30:26+0300 INFO THROTTLE raw=0x0 flags=none
-2026-03-27T14:30:26+0300 INFO TEMP cpu=46.1 pmic=43.0 nvme=38.5
-2026-03-27T14:35:16+0300 WARN TREND rail=ext5v_v ema=4.890 slope=-0.0820 msg="voltage trending down"
-2026-03-27T14:35:17+0300 WARN PMIC ext5v_v=4.842 threshold=4.85 msg="EXT5V below warning threshold"
-2026-03-27T14:35:17+0300 INFO THROTTLE raw=0x0 flags=none
-2026-03-27T14:35:17+0300 INFO TEMP cpu=47.5 pmic=44.0 nvme=39.0
-2026-03-27T14:35:22+0300 ALERT PMIC ext5v_v=4.720 threshold=4.75 msg="EXT5V below low threshold"
-2026-03-27T14:35:22+0300 WARN THROTTLE raw=0x50005 flags=throttled,throttled-occurred,under-voltage,under-voltage-occurred changed="throttle:+throttled,under-voltage"
-2026-03-27T14:35:22+0300 INFO TEMP cpu=48.0 pmic=44.5 nvme=39.0
-2026-03-27T14:40:01+0300 INFO PMIC ext5v_v=5.105 ext5v_a=0.470 vdd_core_v=0.796 vdd_core_a=1.015 3v3_sys_v=3.310 3v3_sys_a=0.121 1v8_sys_v=1.808 1v8_sys_a=0.194 ddr_vdd2_v=1.101 ddr_vddq_v=0.601 hdmi_v=5.138 3v7_wl_sw_v=3.714
-2026-03-27T14:40:01+0300 INFO THROTTLE raw=0x50000 flags=throttled-occurred,under-voltage-occurred changed="throttle:-throttled,under-voltage"
-2026-03-27T14:40:01+0300 INFO TEMP cpu=46.0 pmic=43.0 nvme=38.0
-2026-03-27T15:10:00+0300 WARN TEMP cpu_temp=76.2 threshold=75.0 msg="CPU temperature high"
+2026-03-27T16:25:32+0300 BOOT SYSTEM version=1.1.0 hostname=raspberrypi python=3.11.2
+2026-03-27T16:25:33+0300 BOOT CRASH pm_rsts=0x1000 type=POWER_CYCLE prev_state=clean prev_time="2026-03-27T14:25:47+0300" ext4_recovery=true
+2026-03-27T16:25:33+0300 BOOT PREV_SESSION ext5v_min=5.101 ext5v_max=5.166 ext5v_avg=5.138 samples=5431 warns=0 alerts=0 avg_watts=2.20 from="2026-03-27T14:24:48+0300" to="2026-03-27T16:25:30+0300"
+2026-03-27T16:25:35+0300 INFO PMIC ext5v_v=5.135 ext5v_a=0.474 vdd_core_v=0.721 vdd_core_a=0.795 3v3_sys_v=3.310 3v3_sys_a=0.124 1v8_sys_v=1.815 1v8_sys_a=0.192 ddr_vdd2_v=1.114 ddr_vddq_v=0.618 hdmi_v=5.140 3v7_wl_sw_v=3.711 total_w=2.18
+2026-03-27T16:25:35+0300 INFO THROTTLE raw=0x0 flags=none
+2026-03-27T16:25:35+0300 INFO TEMP cpu=46.3 pmic=47.8 nvme=30.9 fan=2736rpm
+2026-03-27T16:25:35+0300 INFO FREQ cpu=1600MHz gpu=500MHz
+2026-03-27T16:25:38+0300 INFO PMIC ext5v_v=5.134 ext5v_a=0.481 vdd_core_v=0.721 vdd_core_a=0.795 3v3_sys_v=3.341 3v3_sys_a=0.123 1v8_sys_v=1.809 1v8_sys_a=0.194 ddr_vdd2_v=1.114 ddr_vddq_v=0.619 hdmi_v=5.135 3v7_wl_sw_v=3.717 total_w=2.18
+2026-03-27T16:25:38+0300 INFO THROTTLE raw=0x0 flags=none
+2026-03-27T16:25:38+0300 INFO TEMP cpu=46.3 pmic=47.7 nvme=30.9 fan=2735rpm
+2026-03-27T16:25:38+0300 INFO FREQ cpu=1600MHz gpu=500MHz
+2026-03-27T16:25:39+0300 INFO PMIC ext5v_v=5.123 ext5v_a=0.478 vdd_core_v=0.720 vdd_core_a=0.795 3v3_sys_v=3.326 3v3_sys_a=0.126 1v8_sys_v=1.811 1v8_sys_a=0.194 ddr_vdd2_v=1.112 ddr_vddq_v=0.607 hdmi_v=5.147 3v7_wl_sw_v=3.703 total_w=2.18
+2026-03-27T16:25:39+0300 INFO THROTTLE raw=0x0 flags=none
+2026-03-27T16:25:39+0300 INFO TEMP cpu=46.3 pmic=47.7 nvme=30.9 fan=2736rpm
+2026-03-27T16:25:39+0300 INFO FREQ cpu=1500MHz gpu=545MHz
+2026-03-27T16:35:16+0300 WARN TREND rail=ext5v_v ema=4.890 slope=-0.0820 msg="voltage trending down"
+2026-03-27T16:35:17+0300 WARN PMIC ext5v_v=4.842 threshold=4.85 msg="EXT5V below warning threshold"
+2026-03-27T16:35:22+0300 ALERT PMIC ext5v_v=4.720 threshold=4.75 msg="EXT5V below low threshold"
+2026-03-27T16:35:22+0300 WARN THROTTLE raw=0x50005 flags=throttled,throttled-occurred,under-voltage,under-voltage-occurred changed="throttle:+throttled,under-voltage"
+2026-03-27T16:35:22+0300 INFO TEMP cpu=48.0 pmic=48.5 nvme=31.0 fan=3200rpm
+2026-03-27T16:35:22+0300 INFO FREQ cpu=1000MHz gpu=500MHz
+2026-03-27T16:40:01+0300 INFO PMIC ext5v_v=5.105 ext5v_a=0.470 vdd_core_v=0.796 vdd_core_a=1.015 3v3_sys_v=3.310 3v3_sys_a=0.121 1v8_sys_v=1.808 1v8_sys_a=0.194 ddr_vdd2_v=1.101 ddr_vddq_v=0.601 hdmi_v=5.138 3v7_wl_sw_v=3.714 total_w=2.45
+2026-03-27T16:40:01+0300 INFO THROTTLE raw=0x50000 flags=throttled-occurred,under-voltage-occurred changed="throttle:-throttled,under-voltage"
+2026-03-27T16:40:01+0300 INFO TEMP cpu=46.0 pmic=47.5 nvme=30.5 fan=2730rpm
+2026-03-27T16:40:01+0300 INFO FREQ cpu=1800MHz gpu=500MHz
+2026-03-27T17:10:00+0300 WARN TEMP cpu_temp=76.2 threshold=75.0 msg="CPU temperature high"
 2026-03-27T22:00:00+0300 INFO SYSTEM shutdown=clean
