@@ -395,8 +395,12 @@ class SensorReader:
         out = self._run_vcgencmd("get_rsts")
         if not out:
             return None
+        # vcgencmd get_rsts returns hex WITHOUT 0x prefix: "get_rsts=1000"
         try:
-            return int(out.split("=")[1], 0)
+            val_str = out.split("=")[1]
+            if val_str.startswith("0x"):
+                return int(val_str, 16)
+            return int(val_str, 16)  # Always hex from vcgencmd
         except (IndexError, ValueError):
             return None
 
