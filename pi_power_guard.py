@@ -11,7 +11,7 @@ Copyright (c) 2026 Mahsum Aktas
 License: MIT
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 import argparse
 import collections
@@ -283,6 +283,7 @@ class SensorReader:
         self._cpu_thermal = "/sys/class/thermal/thermal_zone0/temp"
         self._volt_alarm_path = self._find_hwmon("rpi_volt", "in0_lcrit_alarm")
         self._nvme_temp_path = self._find_hwmon("nvme", "temp1_input")
+        self._fan_path = self._find_hwmon("pwmfan", "fan1_input")
 
     @staticmethod
     def _find_hwmon(name: str, sensor_file: str = None):
@@ -410,6 +411,54 @@ class SensorReader:
             return None
         return val.strip() != "0"
 
+    def read_fan_speed(self) -> int | None:
+        val = self._sysfs_read(self._fan_path)
+        if val is None:
+            return None
+        try:
+            return int(val)
+        except ValueError:
+            return None
+
+    def read_cpu_freq(self) -> int | None:
+        """Returns CPU frequency in MHz."""
+        out = self._run_vcgencmd("measure_clock", "arm")
+        if not out:
+            return None
+        # "frequency(0)=1800018688" -> Hz, convert to MHz
+        try:
+            hz = int(out.split("=")[1])
+            return hz // 1_000_000
+        except (IndexError, ValueError):
+            return None
+
+    def read_gpu_freq(self) -> int | None:
+        """Returns GPU frequency in MHz."""
+        out = self._run_vcgencmd("measure_clock", "core")
+        if not out:
+            return None
+        try:
+            hz = int(out.split("=")[1])
+            return hz // 1_000_000
+        except (IndexError, ValueError):
+            return None
+
+    @staticmethod
+    def calc_total_power(pmic: dict) -> float | None:
+        """Calculate total power consumption in watts from PMIC V/A pairs."""
+        if not pmic:
+            return None
+        total = 0.0
+        found = False
+        for rail, val in pmic.items():
+            if rail.endswith("_v"):
+                base = rail[:-2]
+                a_rail = base + "_a"
+                if a_rail in pmic:
+                    total += val * pmic[a_rail]
+                    found = True
+        return total if found else None
+
 
 # ---------------------------------------------------------------------------
 # CrashDetector — Boot-time previous shutdown analysis
@@ -424,7 +473,7 @@ class CrashDetector:
         self._sensor = sensor
         os.makedirs(state_dir, exist_ok=True)
 
-    def check(self) -> dict:
+    def check(self, log_dir: str = None) -> dict:
         """Analyze previous shutdown. Returns report dict."""
         report = {
             "pm_rsts": None,
@@ -433,6 +482,7 @@ class CrashDetector:
             "prev_state": "unknown",
             "prev_time": "unknown",
             "ext4_recovery": False,
+            "prev_session": None,
         }
 
         # 1. PM_RSTS register
@@ -468,10 +518,69 @@ class CrashDetector:
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
 
-        # 4. Mark current boot
+        # 4. Previous session summary from log
+        if log_dir:
+            report["prev_session"] = self._analyze_prev_log(log_dir)
+
+        # 5. Mark current boot
         self._write_state("booted")
 
         return report
+
+    @staticmethod
+    def _analyze_prev_log(log_dir: str) -> dict | None:
+        """Analyze previous log for session summary."""
+        log_path = os.path.join(log_dir, "current.log")
+        if not os.path.isfile(log_path):
+            return None
+        try:
+            ext5v_vals = []
+            warn_count = 0
+            alert_count = 0
+            total_watts = []
+            first_ts = None
+            last_ts = None
+            with open(log_path) as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) < 3:
+                        continue
+                    ts = parts[0]
+                    level = parts[1]
+                    if first_ts is None:
+                        first_ts = ts
+                    last_ts = ts
+                    if level == "WARN":
+                        warn_count += 1
+                    elif level == "ALERT":
+                        alert_count += 1
+                    # Extract ext5v_v values
+                    for p in parts[3:]:
+                        if p.startswith("ext5v_v="):
+                            try:
+                                ext5v_vals.append(float(p.split("=")[1]))
+                            except ValueError:
+                                pass
+                        elif p.startswith("total_w="):
+                            try:
+                                total_watts.append(float(p.split("=")[1]))
+                            except ValueError:
+                                pass
+            if not ext5v_vals:
+                return None
+            return {
+                "ext5v_min": min(ext5v_vals),
+                "ext5v_max": max(ext5v_vals),
+                "ext5v_avg": sum(ext5v_vals) / len(ext5v_vals),
+                "warn_count": warn_count,
+                "alert_count": alert_count,
+                "samples": len(ext5v_vals),
+                "avg_watts": sum(total_watts) / len(total_watts) if total_watts else None,
+                "first_ts": first_ts,
+                "last_ts": last_ts,
+            }
+        except OSError:
+            return None
 
     def write_clean_state(self):
         """Called on SIGTERM for clean shutdown."""
@@ -556,13 +665,33 @@ class PowerGuardDaemon:
                        f'python={sys.version.split()[0]}')
 
         # Crash detection
-        report = self._crash_detector.check()
+        log_dir = self._config.get("general", "log_dir")
+        report = self._crash_detector.check(log_dir=log_dir)
         unclean = report["prev_state"] != "clean"
         self._log_line("BOOT", "CRASH",
                        f'pm_rsts={report["pm_rsts_hex"]} type={report["type"]} '
                        f'prev_state={report["prev_state"]} '
                        f'prev_time="{report["prev_time"]}" '
                        f'ext4_recovery={str(report["ext4_recovery"]).lower()}')
+
+        # Previous session summary
+        prev = report.get("prev_session")
+        if prev:
+            parts = [
+                f'ext5v_min={prev["ext5v_min"]:.3f}',
+                f'ext5v_max={prev["ext5v_max"]:.3f}',
+                f'ext5v_avg={prev["ext5v_avg"]:.3f}',
+                f'samples={prev["samples"]}',
+                f'warns={prev["warn_count"]}',
+                f'alerts={prev["alert_count"]}',
+            ]
+            if prev.get("avg_watts") is not None:
+                parts.append(f'avg_watts={prev["avg_watts"]:.2f}')
+            if prev.get("first_ts"):
+                parts.append(f'from="{prev["first_ts"]}"')
+            if prev.get("last_ts"):
+                parts.append(f'to="{prev["last_ts"]}"')
+            self._log_line("BOOT", "PREV_SESSION", " ".join(parts))
 
         if unclean and report["type"] != "UNKNOWN":
             self._sd.status(f"Boot: {report['type']} detected")
@@ -596,6 +725,10 @@ class PowerGuardDaemon:
                 self._update_trends(snapshot)
                 self._check_thresholds(snapshot)
 
+                # Prometheus textfile export (every baseline)
+                if baseline_due:
+                    self._write_prometheus(snapshot)
+
                 # Feed systemd watchdog
                 self._sd.watchdog()
 
@@ -612,6 +745,9 @@ class PowerGuardDaemon:
         pmic = self._sensor.read_pmic_adc()
         snap["pmic"] = pmic
 
+        # Total power consumption
+        snap["total_watts"] = self._sensor.calc_total_power(pmic)
+
         # Throttle
         raw, flags = self._sensor.read_throttled()
         snap["throttle_raw"] = raw
@@ -621,6 +757,13 @@ class PowerGuardDaemon:
         snap["cpu_temp"] = self._sensor.read_cpu_temp()
         snap["pmic_temp"] = self._sensor.read_pmic_temp()
         snap["nvme_temp"] = self._sensor.read_nvme_temp()
+
+        # Fan speed
+        snap["fan_rpm"] = self._sensor.read_fan_speed()
+
+        # CPU/GPU frequency
+        snap["cpu_freq"] = self._sensor.read_cpu_freq()
+        snap["gpu_freq"] = self._sensor.read_gpu_freq()
 
         # Voltage alarm
         snap["volt_alarm"] = self._sensor.read_volt_alarm()
@@ -663,12 +806,19 @@ class PowerGuardDaemon:
                 if abs(curr - prev_val) > self._temp_eps:
                     changes.append(f"{key}:{prev_val:.1f}->{curr:.1f}")
 
+        # CPU frequency change (throttle indicator)
+        curr_freq = snap.get("cpu_freq")
+        prev_freq = prev.get("cpu_freq")
+        if curr_freq is not None and prev_freq is not None:
+            if curr_freq != prev_freq:
+                changes.append(f"cpu_freq:{prev_freq}->{curr_freq}MHz")
+
         return changes
 
     def _log_snapshot(self, snap: dict, changes: list):
         pmic = snap.get("pmic", {})
 
-        # PMIC line
+        # PMIC line with total power
         pmic_parts = []
         for rail in ["ext5v_v", "ext5v_a", "vdd_core_v", "vdd_core_a",
                       "3v3_sys_v", "3v3_sys_a", "1v8_sys_v", "1v8_sys_a",
@@ -676,6 +826,9 @@ class PowerGuardDaemon:
             val = pmic.get(rail)
             if val is not None:
                 pmic_parts.append(f"{rail}={val:.3f}")
+        total_w = snap.get("total_watts")
+        if total_w is not None:
+            pmic_parts.append(f"total_w={total_w:.2f}")
         if pmic_parts:
             self._log_line("INFO", "PMIC", " ".join(pmic_parts))
 
@@ -692,15 +845,29 @@ class PowerGuardDaemon:
         self._log_line(level, "THROTTLE",
                        f"raw={raw_str} flags={flags_str}{change_str}")
 
-        # Temperature line
+        # Temperature + fan line
         temps = []
         for key, label in [("cpu_temp", "cpu"), ("pmic_temp", "pmic"),
                            ("nvme_temp", "nvme")]:
             val = snap.get(key)
             if val is not None:
                 temps.append(f"{label}={val:.1f}")
+        fan = snap.get("fan_rpm")
+        if fan is not None:
+            temps.append(f"fan={fan}rpm")
         if temps:
             self._log_line("INFO", "TEMP", " ".join(temps))
+
+        # Frequency line (only on change or baseline)
+        cpu_freq = snap.get("cpu_freq")
+        gpu_freq = snap.get("gpu_freq")
+        freq_parts = []
+        if cpu_freq is not None:
+            freq_parts.append(f"cpu={cpu_freq}MHz")
+        if gpu_freq is not None:
+            freq_parts.append(f"gpu={gpu_freq}MHz")
+        if freq_parts:
+            self._log_line("INFO", "FREQ", " ".join(freq_parts))
 
     def _update_trends(self, snap: dict):
         pmic = snap.get("pmic", {})
@@ -772,6 +939,44 @@ class PowerGuardDaemon:
                 self._log_line("WARN", "TEMP",
                                f'{key}={val:.1f} threshold={warn} '
                                f'msg="{label} temperature high"')
+
+    def _write_prometheus(self, snap: dict):
+        """Write Prometheus textfile collector .prom file (optional)."""
+        prom_dir = self._config.get("prometheus", "textfile_dir", fallback="")
+        if not prom_dir:
+            return
+        try:
+            lines = []
+            pmic = snap.get("pmic", {})
+            for rail, val in pmic.items():
+                unit = "volts" if rail.endswith("_v") else "amperes"
+                lines.append(f'pi_power_guard_pmic_{unit}{{rail="{rail}"}} {val}')
+            tw = snap.get("total_watts")
+            if tw is not None:
+                lines.append(f"pi_power_guard_power_watts {tw:.2f}")
+            for key, label in [("cpu_temp", "cpu"), ("pmic_temp", "pmic"),
+                               ("nvme_temp", "nvme")]:
+                val = snap.get(key)
+                if val is not None:
+                    lines.append(f'pi_power_guard_temperature_celsius{{sensor="{label}"}} {val}')
+            fan = snap.get("fan_rpm")
+            if fan is not None:
+                lines.append(f"pi_power_guard_fan_rpm {fan}")
+            freq = snap.get("cpu_freq")
+            if freq is not None:
+                lines.append(f"pi_power_guard_cpu_frequency_mhz {freq}")
+            raw = snap.get("throttle_raw")
+            if raw is not None:
+                lines.append(f"pi_power_guard_throttled {raw}")
+
+            tmp = os.path.join(prom_dir, ".pi_power_guard.prom.tmp")
+            dst = os.path.join(prom_dir, "pi_power_guard.prom")
+            os.makedirs(prom_dir, exist_ok=True)
+            with open(tmp, "w") as f:
+                f.write("\n".join(lines) + "\n")
+            os.rename(tmp, dst)
+        except OSError:
+            pass
 
     def _log_line(self, level: str, subsystem: str, data: str):
         ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -850,6 +1055,26 @@ def run_check(config_path: str = None):
             print(f"  {label:8s} {val:>6.1f} C  {status}")
         else:
             print(f"  {label:8s}    N/A")
+
+    # Total power
+    total_w = sensor.calc_total_power(pmic)
+    if total_w is not None:
+        print(f"\nTotal Power:   {total_w:.2f} W")
+
+    # Fan speed
+    fan = sensor.read_fan_speed()
+    if fan is not None:
+        print(f"Fan Speed:     {fan} RPM")
+
+    # CPU/GPU frequency
+    cpu_f = sensor.read_cpu_freq()
+    gpu_f = sensor.read_gpu_freq()
+    if cpu_f is not None or gpu_f is not None:
+        print(f"\nFrequencies:")
+        if cpu_f is not None:
+            print(f"  CPU      {cpu_f:>6d} MHz")
+        if gpu_f is not None:
+            print(f"  GPU      {gpu_f:>6d} MHz")
 
     # Voltage alarm
     alarm = sensor.read_volt_alarm()
